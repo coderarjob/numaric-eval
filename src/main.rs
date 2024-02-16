@@ -2,7 +2,6 @@ use std::{fmt, fmt::Display, process::ExitCode};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 enum Operations {
-    NoOp,
     OpenBracket,
     Subtraction,
     Addition,
@@ -26,45 +25,40 @@ struct OperationProperties {
 impl Operations {
     const fn value(&self) -> OperationProperties {
         match self {
-            Operations::NoOp => OperationProperties {
-                symbol: 'N',
-                associativity: OperatorAssociativity::Left,
-                precedence: 0,
-            },
             Operations::OpenBracket => OperationProperties {
                 symbol: '(',
                 associativity: OperatorAssociativity::Left,
-                precedence: 1,
+                precedence: 0,
             },
             Operations::Subtraction => OperationProperties {
                 symbol: '-',
                 associativity: OperatorAssociativity::Left,
-                precedence: 2,
+                precedence: 1,
             },
             Operations::Addition => OperationProperties {
                 symbol: '+',
                 associativity: OperatorAssociativity::Left,
-                precedence: 2,
+                precedence: 1,
             },
             Operations::Multiply => OperationProperties {
                 symbol: '*',
                 associativity: OperatorAssociativity::Left,
-                precedence: 3,
+                precedence: 2,
             },
             Operations::Divide => OperationProperties {
                 symbol: '/',
                 associativity: OperatorAssociativity::Left,
-                precedence: 3,
+                precedence: 2,
             },
             Operations::Exponent => OperationProperties {
                 symbol: '^',
                 associativity: OperatorAssociativity::Right,
-                precedence: 4,
+                precedence: 3,
             },
             Operations::CloseBracket => OperationProperties {
                 symbol: ')',
                 associativity: OperatorAssociativity::Left,
-                precedence: 5,
+                precedence: 4,
             },
         }
     }
@@ -96,23 +90,7 @@ enum Tokens {
     Unknown(String),
 }
 
-fn main() -> ExitCode {
-    let infix = "2 + 4 + 3";
-    //let infix = "( 2 + 4 ) / 2 * 60";
-
-    match postfix(infix) {
-        Err(error) => {
-            println!("Error: {error}");
-            ExitCode::FAILURE
-        }
-        Ok(postfix) => {
-            println!("{postfix}");
-            ExitCode::SUCCESS
-        }
-    }
-}
-
-fn postfix(eq: &str) -> Result<String, &'static str> {
+fn postfix(eq: &str) -> Result<String, String> {
     let mut out_queue = Vec::<String>::new();
     let mut stack = Vec::<Operations>::new();
 
@@ -121,19 +99,9 @@ fn postfix(eq: &str) -> Result<String, &'static str> {
         let token = detect_token(lexeme);
         match token {
             Tokens::Number(x) => out_queue.push(x.to_string()),
-            Tokens::Operation(op @ Operations::OpenBracket) => stack.push(op),
-            Tokens::Operation(Operations::CloseBracket) => {
-                while let Some(op) = stack.pop() {
-                    if op != Operations::OpenBracket {
-                        break;
-                    }
-
-                    out_queue.push(op.to_string());
-                }
-            }
             Tokens::Operation(op) => addop(op, &mut stack, &mut out_queue),
             Tokens::Unknown(op) => {
-                return Err("Invalid token! {op}");
+                return Err(format!("Invalid token! {op}"));
             }
         }
     }
@@ -145,18 +113,38 @@ fn postfix(eq: &str) -> Result<String, &'static str> {
     Ok(out_queue.join(" "))
 }
 
+fn handle_brackets(op: Operations, stack: &mut Vec<Operations>, out_queue: &mut Vec<String>) {
+    match op {
+        Operations::OpenBracket => stack.push(op),
+        Operations::CloseBracket => {
+            while let Some(op) = stack.pop() {
+                if op == Operations::OpenBracket {
+                    break;
+                }
+
+                out_queue.push(op.to_string());
+            }
+        }
+        _ => assert!(false),
+    }
+}
 fn addop(op: Operations, stack: &mut Vec<Operations>, out_queue: &mut Vec<String>) {
     let op_prop = op.value();
-    if let Some(top_op) = stack.last() {
-        if top_op.value().precedence > op_prop.precedence
-            || (top_op.value().precedence == op_prop.precedence
-                && matches!(op_prop.associativity, OperatorAssociativity::Left))
-        {
-            out_queue.push(stack.pop().unwrap().to_string());
-        }
-    }
 
-    stack.push(op);
+    if op == Operations::OpenBracket || op == Operations::CloseBracket {
+        handle_brackets(op, stack, out_queue);
+    } else {
+        if let Some(top_op) = stack.last() {
+            if top_op.value().precedence > op_prop.precedence
+                || (top_op.value().precedence == op_prop.precedence
+                    && matches!(op_prop.associativity, OperatorAssociativity::Left))
+            {
+                out_queue.push(stack.pop().unwrap().to_string());
+            }
+        }
+
+        stack.push(op);
+    }
 }
 
 fn detect_token(lexeme: &str) -> Tokens {
@@ -167,6 +155,21 @@ fn detect_token(lexeme: &str) -> Tokens {
         x => Tokens::Unknown(x.to_owned()),
     };
     ret
+}
+
+fn main() -> ExitCode {
+    let infix = "( 2 + 4 ) / 2 * 60";
+
+    match postfix(infix) {
+        Err(error) => {
+            println!("Error: {error}");
+            ExitCode::FAILURE
+        }
+        Ok(postfix) => {
+            println!("{postfix}");
+            ExitCode::SUCCESS
+        }
+    }
 }
 
 #[test]
@@ -196,4 +199,28 @@ fn bodmas_order_test_3() {
 fn exponent() {
     let infix = "2 ^ 3 ^ 4";
     assert_eq!(postfix(infix), Ok("2 3 4 ^ ^".to_owned()));
+}
+
+#[test]
+fn brackets_test_1() {
+    let infix = "( 2 + 3 ) * 4";
+    assert_eq!(postfix(infix), Ok("2 3 + 4 *".to_owned()));
+}
+
+#[test]
+fn brackets_test_2() {
+    let infix = "( ( 2 + 3 ) ) * 4";
+    assert_eq!(postfix(infix), Ok("2 3 + 4 *".to_owned()));
+}
+
+#[test]
+fn brackets_test_3() {
+    let infix = "( 10 * ( 2 + 3 ) + 1 ) * 4";
+    assert_eq!(postfix(infix), Ok("10 2 3 + * 1 + 4 *".to_owned()));
+}
+
+#[test]
+fn invalid_token() {
+    let infix = "2 + sine ( 60 )";
+    assert_eq!(postfix(infix).is_err(), true);
 }
