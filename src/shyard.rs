@@ -85,14 +85,14 @@ impl Display for Operations {
 
 #[derive(Debug)]
 enum Tokens {
-    Number(u32),
+    Number(i32),
     Operation(Operations),
     Unknown(String),
 }
 
 impl Tokens {
     fn detect_token(lexeme: &str) -> Tokens {
-        let value = lexeme.parse::<u32>();
+        let value = lexeme.parse::<i32>();
         let ret = match lexeme {
             c if Operations::parse(c).is_ok() => Tokens::Operation(Operations::parse(c).unwrap()),
             _ if value.is_ok() => Tokens::Number(value.unwrap()),
@@ -165,6 +165,13 @@ fn same_precedence() {
     let infix = "2 + 4 + 3";
     assert_eq!(postfix(infix), Ok("2 4 + 3 +".to_owned()));
 }
+
+#[test]
+fn negative_number() {
+    let infix = "-2 + 4 + 3";
+    assert_eq!(postfix(infix), Ok("-2 4 + 3 +".to_owned()));
+}
+
 #[test]
 fn bodmas_order_test_1() {
     let infix = "2 + 4 / 3 * 60";
